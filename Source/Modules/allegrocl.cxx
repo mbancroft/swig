@@ -1218,9 +1218,7 @@ void emit_full_class(Node *n) {
   for (c = firstChild(n); c; c = nextSibling(c)) {
     String *storage_type = Getattr(c, "storage");
     if ((!Strcmp(nodeType(c), "cdecl") && (!storage_type || Strcmp(storage_type, "typedef")))) {
-      String *access = Getattr(c, "access");
 
-      // hack. why would decl have a value of "variableHandler" and now "0"?
       String *childDecl = Getattr(c, "decl");
       // Printf(stderr,"childDecl = '%s' (%s)\n", childDecl, Getattr(c,"view"));
       if (!childDecl || !Strcmp(childDecl, "0"))
@@ -1230,7 +1228,7 @@ void emit_full_class(Node *n) {
       String *cname;
 
       // don't include types for private slots (yet). spr33959.
-      if(access && Strcmp(access,"public")) {
+      if(!is_public(c)) {
 	      childType = NewStringf("int");
 	      cname = NewString("nil");
       } else {
@@ -1246,12 +1244,10 @@ void emit_full_class(Node *n) {
 #ifdef ALLEGROCL_WRAP_DEBUG
 	Printf(stderr, "slot name = '%s' ns = '%s' class-of '%s' and type = '%s'\n", cname, ns, name, childType);
 #endif
-	Printf(slotdefs, "(#.(swig-insert-id \"%s\" %s :type :slot :class \"%s\") %s)", cname, ns, name, compose_foreign_type(n, childType));
 	Delete(ns);
-	if (access && Strcmp(access, "public"))
-	  Printf(slotdefs, " ;; %s member", access);
+	if (is_public(c))
+	  Printf(slotdefs, "(#.(swig-insert-id \"%s\" %s :type :slot :class \"%s\") %s)\n", cname, ns, name, compose_foreign_type(n, childType));
 
-	Printf(slotdefs, "\n   ");
       }
       Delete(childType);
       Delete(cname);
@@ -1520,14 +1516,14 @@ void emit_linked_types() {
     // Printf(stderr,"emitting node %s(%p) of type %s.", Getattr(n,"name"),n, nodeType(n));
     if (!Strcmp(node_type, "class") || !Strcmp(node_type, "templateInst")) {
       // may need to emit a stub, so it will update the package itself.
-      // Printf(stderr," Passing to emit_class.");
+      // Printf(stderr," Passing to emit_class.\n");
       emit_class(n);
     } else if (!Strcmp(nodeType(n), "cdecl")) {
-      // Printf(stderr," Passing to emit_typedef.");
+      // Printf(stderr," Passing to emit_typedef.\n");
       update_package_if_needed(n, f_clhead);
       emit_typedef(n);
     } else {
-      // Printf(stderr," Passing to default_emitter.");
+      // Printf(stderr," Passing to default_emitter.\n");
       update_package_if_needed(n, f_clhead);
       emit_default_linked_type(n);
     }
@@ -2239,9 +2235,7 @@ IDargs *id_converter_arguments(Node *n) {
   if (Getattr(n, "sym:overloaded")) {
     if (result->arity)
       Delete(result->arity);
-    result->arity = NewStringf("%d",
-			       // emit_num_arguments(Getattr(n, "wrap:parms")));
-			       emit_num_lin_arguments(Getattr(n, "wrap:parms")));
+    result->arity = NewStringf("%d", emit_num_lin_arguments(Getattr(n, "wrap:parms")));
     // Printf(stderr, "got arity of '%s' node '%s' '%p'\n", result->arity, Getattr(n,"name"), Getattr(n,"wrap:parms"));
   }
 
@@ -2833,11 +2827,10 @@ int ALLEGROCL::constantWrapper(Node *n) {
       const_val = Copy(raw_const);
     }
 
-    SwigType_add_qualifier(const_type, "const");
+    // SwigType_add_qualifier(const_type, "const");
 
     String *ppcname = NewStringf("ACLppc_%s", Getattr(n, "sym:name"));
-    // Printf(f_runtime, "static const %s = %s;\n", SwigType_lstr(const_type, ppcname), const_val);
-    Printf(f_runtime, "static %s = %s;\n", SwigType_lstr(const_type, ppcname), const_val);
+    Printf(f_runtime, "static const %s = %s;\n", SwigType_lstr(const_type, ppcname), const_val);
 
     Setattr(n, "name", ppcname);
     SetFlag(n, "feature:immutable");
@@ -3113,21 +3106,20 @@ int ALLEGROCL::cppClassHandler(Node *n) {
   Node *c;
   // walk all member variables.
 #ifdef ALLEGROCL_CLASS_DEBUG
-  Printf(stderr, "   MANUALLY walking class members... \n");
+  Printf(stderr, "   MANUALLY walking class members of %s... \n", Getattr(n, "name"));
 #endif
   for (c = firstChild(n); c; c = nextSibling(c)) {
-    // ping the types of all children--even protected and private
-    // so their types can be added to the linked_type_list.
+    // ping the types of all unignored children so their types can be added to the linked_type_list.
     SwigType *childType = NewStringf("%s%s", Getattr(c, "decl"),
 				     Getattr(c, "type"));
-#ifdef ALLEGROCL_CLASS_DEBUG
-    Printf(stderr, "looking at child '%p' of type '%s' '%d'\n", c, childType, SwigType_isfunction(childType));
-    // Swig_print_node(c);
-#endif
-    if (!SwigType_isfunction(childType))
-      Delete(compose_foreign_type(n, childType));
 
-    Delete(childType);
+#ifdef ALLEGROCL_CLASS_DEBUG
+    Printf(stderr, "looking at child %s'%p' of type '%s' '%d'\n", Getattr(c,"name"), c, childType, SwigType_isfunction(childType));
+#endif
+      if (!SwigType_isfunction(childType) && is_public(c) && !GetFlag(c,"feature:ignore"))
+        Delete(compose_foreign_type(n, childType));
+
+      Delete(childType);
   }
 #ifdef ALLEGROCL_CLASS_DEBUG
   Printf(stderr, "   MANUAL walk DONE.\n");
@@ -3186,6 +3178,9 @@ int ALLEGROCL::enumvalueDeclaration(Node *n) {
 #ifdef ALLEGROCL_DEBUG
   Printf(stderr, "enumvalueDeclaration %s\n", Getattr(n, "name"));
 #endif
+  if (!is_public(n)) {
+    return SWIG_OK;
+  }
   /* print this when in C mode? make this a command-line arg? */
   if (Generate_Wrapper) {
 	  SwigType *enum_type = Copy(Getattr(n,"type"));

@@ -21,10 +21,10 @@
 %{ (cl:let* ((address $body)
 	  (new-inst (cl:make-instance '$lclass :foreign-address address)))
      (cl:when (cl:and $owner (cl:not (cl:zerop address)))
-       (excl:schedule-finalization new-inst #'$ldestructor))
+       (excl:schedule-finalization new-inst '$ldestructor))
      (cl:setq ACL_ffresult new-inst)) %}
 
-%typemap(lout) SWIGTYPE         "(cl::let* ((address $body)\n         (new-inst (cl::make-instance '$lclass :foreign-address address)))\n    (cl::unless (cl::zerop address)\n      (excl:schedule-finalization new-inst #'$ldestructor))\n    (cl::setq ACL_ffresult new-inst))";
+%typemap(lout) SWIGTYPE         "(cl::let* ((address $body)\n         (new-inst (cl::make-instance '$lclass :foreign-address address)))\n    (cl::unless (cl::zerop address)\n      (excl:schedule-finalization new-inst '$ldestructor))\n    (cl::setq ACL_ffresult new-inst))";
 #else
 %typemap(lout) SWIGTYPE[ANY], SWIGTYPE *, SWIGTYPE &, SWIGTYPE &&, SWIGTYPE
 %{ (cl:let* ((address $body)
