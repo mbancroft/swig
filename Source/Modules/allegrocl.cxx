@@ -1244,9 +1244,9 @@ void emit_full_class(Node *n) {
 #ifdef ALLEGROCL_WRAP_DEBUG
 	Printf(stderr, "slot name = '%s' ns = '%s' class-of '%s' and type = '%s'\n", cname, ns, name, childType);
 #endif
-	Delete(ns);
 	if (is_public(c))
 	  Printf(slotdefs, "(#.(swig-insert-id \"%s\" %s :type :slot :class \"%s\") %s)\n", cname, ns, name, compose_foreign_type(n, childType));
+	Delete(ns);
 
       }
       Delete(childType);
