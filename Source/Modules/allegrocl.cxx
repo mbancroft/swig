@@ -482,7 +482,7 @@ void add_defined_foreign_type(Node *n, int overwrite = 0, String *k = 0,
 	if (!Strcmp(nodeType(n), "cdecl") && !Strcmp(Getattr(n, "storage"), "typedef")) {
 	  SwigType *type = SwigType_strip_qualifiers(Getattr(n, "type"));
 #ifdef ALLEGROCL_CLASS_DEBUG
-	  Printf(stderr, "Examining typedef '%s' for class references. (%d)\n", type, SwigType_isclass(type));
+	  Printf(stderr, "Examining typedef '%s' for class references\n", type);
 #endif
 	  if (SwigType_isclass(type)) {
 #ifdef ALLEGROCL_CLASS_DEBUG
@@ -517,12 +517,12 @@ void add_defined_foreign_type(Node *n, int overwrite = 0, String *k = 0,
 		Setattr(n, "real-name", Copy(lookup_type));
 
 		// Printf(stderr, "*** pre-5: found match of '%s'(%p)\n", Getattr(match,"name"),match);
-		// if(n == match) Printf(stderr, "Hey-5 *** setting synonym of %p to %p\n", n, match);
+		// if(n == match) Printf(stderr, "*** Hey-5: setting synonym of %p to %p\n", n, match);
 		// Printf(stderr,"*** 5\n");
 		add_linked_type(n);
 	      } else {
 #ifdef ALLEGROCL_CLASS_DEBUG
-		Printf(stderr, "Creating classfoward node for struct stub in typedef.\n");
+		// Printf(stderr, "Creating classforward node for struct stub in typedef.\n");
 #endif
 		Node *new_node = NewHash();
 		String *symname = Copy(type);
@@ -1138,7 +1138,16 @@ void emit_synonym(Node *synonym) {
   String *of_ns_list = listify_namespace(of_ns);
   // String *of_name = of_cdeclname ? NewStringf("struct %s", Getattr(of,"name")) : NewStringf("%s::%s", of_ns, Getattr(of,"sym:name"));
   // String *of_name = NewStringf("%s::%s", of_ns, Getattr(of,"sym:name"));
-  String *of_name = namespaced_name(of, of_ns);
+  String *of_name;
+
+  // Synonym types in C mode are likely a result of 'typedef struct _foo foo;' type declarations.
+  // in this case, we want the "name" attribute and not sym:name, since that is the key under which
+  // the struct/union has been added to the defined_foreign_types and defined_foreign_ltypes hashes
+  if (CPlusPlus) {
+    of_name = namespaced_name(of, of_ns);
+  } else {
+    of_name = Getattr(of, "name");
+  }
 
   if (CPlusPlus && !Strcmp(nodeType(synonym), "cdecl")) {
     String *real_name = Getattr(synonym, "real-name");
@@ -1155,7 +1164,7 @@ void emit_synonym(Node *synonym) {
 
   // Printf(stderr,";; from emit-synonym syn='%s' of_ltype='%s'\n", syn_ltype, of_ltype);
   if( of_ltype )
-      Printf(f_clhead, "(swig-def-synonym-type %s\n   %s\n   %s)\n", syn_ltype, of_ltype, syn_type);
+      Printf(f_clhead, "(swig-def-synonym-type %s\n   %s\n   %s)\n\n", syn_ltype, of_ltype, syn_type);
 
   Delete(synonym_ns);
   Delete(of_ns_list);
@@ -2991,7 +3000,8 @@ int ALLEGROCL::typedefHandler(Node *n) {
   Printf(stderr, "** lookup='%s'(%p), typedef_type='%s', strcmp = '%d' strstr = '%d'\n", lookup, lookup, typedef_type, Strcmp(typedef_type,"void"), Strstr(ff_type,"__SWIGACL_FwdReference"));
 #endif
 
-  if(lookup || (!lookup && Strcmp(typedef_type,"void")) ||
+  if(lookup ||
+     (!lookup && Strcmp(typedef_type,"void")) ||
      (!lookup && Strstr(ff_type,"__SWIGACL_FwdReference"))) {
 	  add_defined_foreign_type(n, 0, type_ref, name);
   } else {
